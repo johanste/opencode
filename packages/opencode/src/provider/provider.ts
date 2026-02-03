@@ -87,6 +87,7 @@ export namespace Provider {
   /**
    * Creates an Azure token provider using DefaultAzureCredential with automatic token refresh.
    * Tokens are cached and refreshed automatically 5 minutes before expiry.
+   * Uses a promise-based lock to prevent concurrent token refresh requests.
    */
   async function createAzureTokenProvider() {
     const { DefaultAzureCredential } = await import(await BunProc.install("@azure/identity"))
@@ -95,15 +96,31 @@ export namespace Provider {
 
     let cachedToken: string | undefined
     let tokenExpiry: number = 0
+    let refreshPromise: Promise<string> | undefined
 
     const getToken = async (): Promise<string> => {
       const now = Date.now()
       // Refresh token if expired or about to expire (within 5 minutes)
       if (!cachedToken || tokenExpiry - now < 5 * 60 * 1000) {
-        const tokenResponse = await credential.getToken(scope)
-        cachedToken = tokenResponse.token
-        // Token expiry is in milliseconds
-        tokenExpiry = tokenResponse.expiresOnTimestamp
+        // If a refresh is already in progress, wait for it
+        if (refreshPromise) {
+          return refreshPromise
+        }
+
+        // Start a new refresh
+        refreshPromise = (async () => {
+          try {
+            const tokenResponse = await credential.getToken(scope)
+            cachedToken = tokenResponse.token
+            // Token expiry is in milliseconds
+            tokenExpiry = tokenResponse.expiresOnTimestamp
+            return cachedToken
+          } finally {
+            refreshPromise = undefined
+          }
+        })()
+
+        return refreshPromise
       }
       return cachedToken
     }
@@ -315,9 +332,12 @@ export namespace Provider {
           // Log the error to help with troubleshooting
           log.error("Failed to initialize Azure DefaultAzureCredential for Cognitive Services", { error })
           // Return loader with baseURL set for informational purposes
+          const defaultLoader = createDefaultAzureLoader()
           return {
-            ...createDefaultAzureLoader(),
+            autoload: defaultLoader.autoload,
+            getModel: defaultLoader.getModel,
             options: {
+              ...defaultLoader.options,
               baseURL: resourceName ? `https://${resourceName}.cognitiveservices.azure.com/openai` : undefined,
             },
           }
