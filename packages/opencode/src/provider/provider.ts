@@ -90,6 +90,8 @@ export namespace Provider {
    * Uses a promise-based lock to prevent concurrent token refresh requests.
    */
   async function createAzureTokenProvider() {
+    // Note: Dynamic import via BunProc.install is used for consistency with other providers
+    // and to support runtime installation in environments where packages aren't pre-installed
     const { DefaultAzureCredential } = await import(await BunProc.install("@azure/identity"))
     const credential = new DefaultAzureCredential()
     const scope = "https://cognitiveservices.azure.com/.default"
@@ -129,6 +131,15 @@ export namespace Provider {
     await getToken()
 
     return getToken
+  }
+
+  /**
+   * Gets API key from auth store or environment variables
+   */
+  async function getAzureApiKey(providerID: string): Promise<string | undefined> {
+    const auth = await Auth.get(providerID)
+    if (auth?.type === "api") return auth.key
+    return Env.get("AZURE_API_KEY") ?? Env.get("AZURE_OPENAI_API_KEY")
   }
 
   /**
@@ -221,15 +232,9 @@ export namespace Provider {
     azure: async () => {
       const config = await Config.get()
       const providerConfig = config.provider?.["azure"]
-      const auth = await Auth.get("azure")
 
       // Check if we have an API key from auth or environment
-      const apiKey = await (async () => {
-        if (auth?.type === "api") return auth.key
-        const envKey = Env.get("AZURE_API_KEY") ?? Env.get("AZURE_OPENAI_API_KEY")
-        if (envKey) return envKey
-        return undefined
-      })()
+      const apiKey = await getAzureApiKey("azure")
 
       // Get resource name from config or environment
       const resourceName =
@@ -287,15 +292,9 @@ export namespace Provider {
     "azure-cognitive-services": async () => {
       const config = await Config.get()
       const providerConfig = config.provider?.["azure-cognitive-services"]
-      const auth = await Auth.get("azure-cognitive-services")
 
       // Check if we have an API key from auth or environment
-      const apiKey = await (async () => {
-        if (auth?.type === "api") return auth.key
-        const envKey = Env.get("AZURE_API_KEY") ?? Env.get("AZURE_OPENAI_API_KEY")
-        if (envKey) return envKey
-        return undefined
-      })()
+      const apiKey = await getAzureApiKey("azure-cognitive-services")
 
       // Get resource name from config or environment
       const resourceName =
