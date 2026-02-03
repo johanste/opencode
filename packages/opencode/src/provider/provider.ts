@@ -81,6 +81,7 @@ export namespace Provider {
   }
 
   // Placeholder API key required by @ai-sdk/azure when using bearer token authentication
+  // The SDK requires an apiKey parameter even when using Authorization header with bearer tokens
   const AZURE_DUMMY_API_KEY = "dummy"
 
   /**
@@ -111,6 +112,23 @@ export namespace Provider {
     await getToken()
 
     return getToken
+  }
+
+  /**
+   * Creates a default Azure model loader that doesn't require any credentials
+   */
+  function createDefaultAzureLoader() {
+    return {
+      autoload: false,
+      async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
+        if (options?.["useCompletionUrls"]) {
+          return sdk.chat(modelID)
+        } else {
+          return sdk.responses(modelID)
+        }
+      },
+      options: {},
+    }
   }
 
   type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
@@ -202,6 +220,7 @@ export namespace Provider {
 
       // Build options object
       const providerOptions: Record<string, any> = {}
+      let credentialsAvailable = false
 
       // If we have an API key, use it
       if (apiKey) {
@@ -209,6 +228,7 @@ export namespace Provider {
         if (resourceName) {
           providerOptions.baseURL = `https://${resourceName}.openai.azure.com`
         }
+        credentialsAvailable = true
       } else if (resourceName) {
         // Try to use DefaultAzureCredential for token-based authentication when we have resourceName but no API key
         try {
@@ -223,42 +243,19 @@ export namespace Provider {
             }
           }
           providerOptions.baseURL = `https://${resourceName}.openai.azure.com`
+          credentialsAvailable = true
         } catch (error) {
           // Log the error to help with troubleshooting
           log.error("Failed to initialize Azure DefaultAzureCredential", { error })
-          // If DefaultAzureCredential fails, we'll autoload as false
-          return {
-            autoload: false,
-            async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
-              if (options?.["useCompletionUrls"]) {
-                return sdk.chat(modelID)
-              } else {
-                return sdk.responses(modelID)
-              }
-            },
-            options: {},
-          }
+          return createDefaultAzureLoader()
         }
       } else {
         // No credentials available
-        return {
-          autoload: false,
-          async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
-            if (options?.["useCompletionUrls"]) {
-              return sdk.chat(modelID)
-            } else {
-              return sdk.responses(modelID)
-            }
-          },
-          options: {},
-        }
+        return createDefaultAzureLoader()
       }
 
-      // Determine if we should autoload based on available credentials
-      const shouldAutoload = Boolean(apiKey || resourceName)
-
       return {
-        autoload: shouldAutoload,
+        autoload: credentialsAvailable,
         async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
           if (options?.["useCompletionUrls"]) {
             return sdk.chat(modelID)
@@ -290,6 +287,7 @@ export namespace Provider {
 
       // Build options object
       const providerOptions: Record<string, any> = {}
+      let credentialsAvailable = false
 
       // If we have an API key, use it
       if (apiKey) {
@@ -297,6 +295,7 @@ export namespace Provider {
         if (resourceName) {
           providerOptions.baseURL = `https://${resourceName}.cognitiveservices.azure.com/openai`
         }
+        credentialsAvailable = true
       } else if (resourceName) {
         // Try to use DefaultAzureCredential for token-based authentication when we have resourceName but no API key
         try {
@@ -311,19 +310,13 @@ export namespace Provider {
             }
           }
           providerOptions.baseURL = `https://${resourceName}.cognitiveservices.azure.com/openai`
+          credentialsAvailable = true
         } catch (error) {
           // Log the error to help with troubleshooting
           log.error("Failed to initialize Azure DefaultAzureCredential for Cognitive Services", { error })
-          // If DefaultAzureCredential fails, we'll autoload as false
+          // Return loader with baseURL set for informational purposes
           return {
-            autoload: false,
-            async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
-              if (options?.["useCompletionUrls"]) {
-                return sdk.chat(modelID)
-              } else {
-                return sdk.responses(modelID)
-              }
-            },
+            ...createDefaultAzureLoader(),
             options: {
               baseURL: resourceName ? `https://${resourceName}.cognitiveservices.azure.com/openai` : undefined,
             },
@@ -331,24 +324,11 @@ export namespace Provider {
         }
       } else {
         // No credentials available
-        return {
-          autoload: false,
-          async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
-            if (options?.["useCompletionUrls"]) {
-              return sdk.chat(modelID)
-            } else {
-              return sdk.responses(modelID)
-            }
-          },
-          options: {},
-        }
+        return createDefaultAzureLoader()
       }
 
-      // Determine if we should autoload based on available credentials
-      const shouldAutoload = Boolean(apiKey || resourceName)
-
       return {
-        autoload: shouldAutoload,
+        autoload: credentialsAvailable,
         async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
           if (options?.["useCompletionUrls"]) {
             return sdk.chat(modelID)
