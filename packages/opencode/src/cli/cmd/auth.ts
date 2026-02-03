@@ -344,6 +344,17 @@ export const AuthLoginCommand = cmd({
           )
         }
 
+        if (provider === "azure" || provider === "azure-cognitive-services") {
+          prompts.log.info(
+            "Azure OpenAI authentication priority:\n" +
+              "  1. API key (AZURE_API_KEY, AZURE_OPENAI_API_KEY, or /connect)\n" +
+              "  2. DefaultAzureCredential (managed identity, Azure CLI, environment variables)\n\n" +
+              "Configure via opencode.json options (resourceName) or\n" +
+              "Azure environment variables (AZURE_RESOURCE_NAME, AZURE_OPENAI_RESOURCE_NAME).\n" +
+              "DefaultAzureCredential supports: Managed Identity, Azure CLI, Environment Variables, and more.",
+          )
+        }
+
         if (provider === "opencode") {
           prompts.log.info("Create an api key at https://opencode.ai/auth")
         }

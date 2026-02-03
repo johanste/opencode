@@ -151,8 +151,88 @@ export namespace Provider {
       }
     },
     azure: async () => {
+      const config = await Config.get()
+      const providerConfig = config.provider?.["azure"]
+      const auth = await Auth.get("azure")
+
+      // Check if we have an API key from auth or environment
+      const apiKey = await (async () => {
+        if (auth?.type === "api") return auth.key
+        const envKey = Env.get("AZURE_API_KEY") ?? Env.get("AZURE_OPENAI_API_KEY")
+        if (envKey) return envKey
+        return undefined
+      })()
+
+      // Get resource name from config or environment
+      const resourceName =
+        providerConfig?.options?.resourceName ?? Env.get("AZURE_RESOURCE_NAME") ?? Env.get("AZURE_OPENAI_RESOURCE_NAME")
+
+      // Build options object
+      const providerOptions: Record<string, any> = {}
+
+      // If we have an API key, use it
+      if (apiKey) {
+        providerOptions.apiKey = apiKey
+      } else {
+        // Try to use DefaultAzureCredential for token-based authentication
+        try {
+          const { DefaultAzureCredential } = await import(await BunProc.install("@azure/identity"))
+          const credential = new DefaultAzureCredential()
+          const scope = "https://cognitiveservices.azure.com/.default"
+
+          // Create a token refresh function
+          let cachedToken: string | undefined
+          let tokenExpiry: number = 0
+
+          const getToken = async (): Promise<string> => {
+            const now = Date.now()
+            // Refresh token if expired or about to expire (within 5 minutes)
+            if (!cachedToken || tokenExpiry - now < 5 * 60 * 1000) {
+              const tokenResponse = await credential.getToken(scope)
+              cachedToken = tokenResponse.token
+              // Token expiry is in milliseconds
+              tokenExpiry = tokenResponse.expiresOnTimestamp
+            }
+            return cachedToken
+          }
+
+          // Get initial token
+          const initialToken = await getToken()
+
+          // Use headers with a function to get fresh tokens
+          providerOptions.apiKey = "dummy" // Required by SDK but unused when using bearer token
+          providerOptions.headers = async () => {
+            const token = await getToken()
+            return {
+              Authorization: `Bearer ${token}`,
+            }
+          }
+        } catch (error) {
+          // If DefaultAzureCredential fails, we'll autoload as false
+          return {
+            autoload: false,
+            async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
+              if (options?.["useCompletionUrls"]) {
+                return sdk.chat(modelID)
+              } else {
+                return sdk.responses(modelID)
+              }
+            },
+            options: {},
+          }
+        }
+      }
+
+      // Add baseURL if resourceName is provided
+      if (resourceName) {
+        providerOptions.baseURL = `https://${resourceName}.openai.azure.com`
+      }
+
+      // Determine if we should autoload based on available credentials
+      const shouldAutoload = Boolean(apiKey || resourceName)
+
       return {
-        autoload: false,
+        autoload: shouldAutoload,
         async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
           if (options?.["useCompletionUrls"]) {
             return sdk.chat(modelID)
@@ -160,13 +240,96 @@ export namespace Provider {
             return sdk.responses(modelID)
           }
         },
-        options: {},
+        options: providerOptions,
       }
     },
     "azure-cognitive-services": async () => {
-      const resourceName = Env.get("AZURE_COGNITIVE_SERVICES_RESOURCE_NAME")
+      const config = await Config.get()
+      const providerConfig = config.provider?.["azure-cognitive-services"]
+      const auth = await Auth.get("azure-cognitive-services")
+
+      // Check if we have an API key from auth or environment
+      const apiKey = await (async () => {
+        if (auth?.type === "api") return auth.key
+        const envKey = Env.get("AZURE_API_KEY") ?? Env.get("AZURE_OPENAI_API_KEY")
+        if (envKey) return envKey
+        return undefined
+      })()
+
+      // Get resource name from config or environment
+      const resourceName =
+        providerConfig?.options?.resourceName ??
+        Env.get("AZURE_COGNITIVE_SERVICES_RESOURCE_NAME") ??
+        Env.get("AZURE_RESOURCE_NAME")
+
+      // Build options object
+      const providerOptions: Record<string, any> = {}
+
+      // If we have an API key, use it
+      if (apiKey) {
+        providerOptions.apiKey = apiKey
+      } else {
+        // Try to use DefaultAzureCredential for token-based authentication
+        try {
+          const { DefaultAzureCredential } = await import(await BunProc.install("@azure/identity"))
+          const credential = new DefaultAzureCredential()
+          const scope = "https://cognitiveservices.azure.com/.default"
+
+          // Create a token refresh function
+          let cachedToken: string | undefined
+          let tokenExpiry: number = 0
+
+          const getToken = async (): Promise<string> => {
+            const now = Date.now()
+            // Refresh token if expired or about to expire (within 5 minutes)
+            if (!cachedToken || tokenExpiry - now < 5 * 60 * 1000) {
+              const tokenResponse = await credential.getToken(scope)
+              cachedToken = tokenResponse.token
+              // Token expiry is in milliseconds
+              tokenExpiry = tokenResponse.expiresOnTimestamp
+            }
+            return cachedToken
+          }
+
+          // Get initial token
+          const initialToken = await getToken()
+
+          // Use headers with a function to get fresh tokens
+          providerOptions.apiKey = "dummy" // Required by SDK but unused when using bearer token
+          providerOptions.headers = async () => {
+            const token = await getToken()
+            return {
+              Authorization: `Bearer ${token}`,
+            }
+          }
+        } catch (error) {
+          // If DefaultAzureCredential fails, we'll autoload as false
+          return {
+            autoload: false,
+            async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
+              if (options?.["useCompletionUrls"]) {
+                return sdk.chat(modelID)
+              } else {
+                return sdk.responses(modelID)
+              }
+            },
+            options: {
+              baseURL: resourceName ? `https://${resourceName}.cognitiveservices.azure.com/openai` : undefined,
+            },
+          }
+        }
+      }
+
+      // Set baseURL for Cognitive Services
+      if (resourceName) {
+        providerOptions.baseURL = `https://${resourceName}.cognitiveservices.azure.com/openai`
+      }
+
+      // Determine if we should autoload based on available credentials
+      const shouldAutoload = Boolean(apiKey || resourceName)
+
       return {
-        autoload: false,
+        autoload: shouldAutoload,
         async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
           if (options?.["useCompletionUrls"]) {
             return sdk.chat(modelID)
@@ -174,9 +337,7 @@ export namespace Provider {
             return sdk.responses(modelID)
           }
         },
-        options: {
-          baseURL: resourceName ? `https://${resourceName}.cognitiveservices.azure.com/openai` : undefined,
-        },
+        options: providerOptions,
       }
     },
     "amazon-bedrock": async () => {
