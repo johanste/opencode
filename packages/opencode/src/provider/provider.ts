@@ -80,6 +80,39 @@ export namespace Provider {
     "@ai-sdk/github-copilot": createGitHubCopilotOpenAICompatible,
   }
 
+  // Placeholder API key required by @ai-sdk/azure when using bearer token authentication
+  const AZURE_DUMMY_API_KEY = "dummy"
+
+  /**
+   * Creates an Azure token provider using DefaultAzureCredential with automatic token refresh.
+   * Tokens are cached and refreshed automatically 5 minutes before expiry.
+   */
+  async function createAzureTokenProvider() {
+    const { DefaultAzureCredential } = await import(await BunProc.install("@azure/identity"))
+    const credential = new DefaultAzureCredential()
+    const scope = "https://cognitiveservices.azure.com/.default"
+
+    let cachedToken: string | undefined
+    let tokenExpiry: number = 0
+
+    const getToken = async (): Promise<string> => {
+      const now = Date.now()
+      // Refresh token if expired or about to expire (within 5 minutes)
+      if (!cachedToken || tokenExpiry - now < 5 * 60 * 1000) {
+        const tokenResponse = await credential.getToken(scope)
+        cachedToken = tokenResponse.token
+        // Token expiry is in milliseconds
+        tokenExpiry = tokenResponse.expiresOnTimestamp
+      }
+      return cachedToken
+    }
+
+    // Verify credentials work by getting initial token
+    await getToken()
+
+    return getToken
+  }
+
   type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
   type CustomLoader = (provider: Info) => Promise<{
     autoload: boolean
@@ -179,31 +212,10 @@ export namespace Provider {
       } else if (resourceName) {
         // Try to use DefaultAzureCredential for token-based authentication when we have resourceName but no API key
         try {
-          const { DefaultAzureCredential } = await import(await BunProc.install("@azure/identity"))
-          const credential = new DefaultAzureCredential()
-          const scope = "https://cognitiveservices.azure.com/.default"
-
-          // Create a token refresh function
-          let cachedToken: string | undefined
-          let tokenExpiry: number = 0
-
-          const getToken = async (): Promise<string> => {
-            const now = Date.now()
-            // Refresh token if expired or about to expire (within 5 minutes)
-            if (!cachedToken || tokenExpiry - now < 5 * 60 * 1000) {
-              const tokenResponse = await credential.getToken(scope)
-              cachedToken = tokenResponse.token
-              // Token expiry is in milliseconds
-              tokenExpiry = tokenResponse.expiresOnTimestamp
-            }
-            return cachedToken
-          }
-
-          // Get initial token to verify credentials work
-          await getToken()
+          const getToken = await createAzureTokenProvider()
 
           // Use headers with a function to get fresh tokens
-          providerOptions.apiKey = "dummy" // Required by SDK but unused when using bearer token
+          providerOptions.apiKey = AZURE_DUMMY_API_KEY
           providerOptions.headers = async () => {
             const token = await getToken()
             return {
@@ -212,6 +224,8 @@ export namespace Provider {
           }
           providerOptions.baseURL = `https://${resourceName}.openai.azure.com`
         } catch (error) {
+          // Log the error to help with troubleshooting
+          log.error("Failed to initialize Azure DefaultAzureCredential", { error })
           // If DefaultAzureCredential fails, we'll autoload as false
           return {
             autoload: false,
@@ -286,31 +300,10 @@ export namespace Provider {
       } else if (resourceName) {
         // Try to use DefaultAzureCredential for token-based authentication when we have resourceName but no API key
         try {
-          const { DefaultAzureCredential } = await import(await BunProc.install("@azure/identity"))
-          const credential = new DefaultAzureCredential()
-          const scope = "https://cognitiveservices.azure.com/.default"
-
-          // Create a token refresh function
-          let cachedToken: string | undefined
-          let tokenExpiry: number = 0
-
-          const getToken = async (): Promise<string> => {
-            const now = Date.now()
-            // Refresh token if expired or about to expire (within 5 minutes)
-            if (!cachedToken || tokenExpiry - now < 5 * 60 * 1000) {
-              const tokenResponse = await credential.getToken(scope)
-              cachedToken = tokenResponse.token
-              // Token expiry is in milliseconds
-              tokenExpiry = tokenResponse.expiresOnTimestamp
-            }
-            return cachedToken
-          }
-
-          // Get initial token to verify credentials work
-          await getToken()
+          const getToken = await createAzureTokenProvider()
 
           // Use headers with a function to get fresh tokens
-          providerOptions.apiKey = "dummy" // Required by SDK but unused when using bearer token
+          providerOptions.apiKey = AZURE_DUMMY_API_KEY
           providerOptions.headers = async () => {
             const token = await getToken()
             return {
@@ -319,6 +312,8 @@ export namespace Provider {
           }
           providerOptions.baseURL = `https://${resourceName}.cognitiveservices.azure.com/openai`
         } catch (error) {
+          // Log the error to help with troubleshooting
+          log.error("Failed to initialize Azure DefaultAzureCredential for Cognitive Services", { error })
           // If DefaultAzureCredential fails, we'll autoload as false
           return {
             autoload: false,
