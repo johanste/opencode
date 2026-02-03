@@ -84,17 +84,20 @@ export namespace Provider {
   // The SDK requires an apiKey parameter even when using Authorization header with bearer tokens
   const AZURE_DUMMY_API_KEY = "dummy"
 
+  // Azure OAuth scopes for different providers
+  const AZURE_OPENAI_SCOPE = "https://cognitiveservices.azure.com/.default"
+
   /**
    * Creates an Azure token provider using DefaultAzureCredential with automatic token refresh.
    * Tokens are cached and refreshed automatically 5 minutes before expiry.
    * Uses a promise-based lock to prevent concurrent token refresh requests.
+   * @param scope - The OAuth scope to request tokens for (e.g., "https://cognitiveservices.azure.com/.default")
    */
-  async function createAzureTokenProvider() {
+  async function createAzureTokenProvider(scope: string) {
     // Note: Dynamic import via BunProc.install is used for consistency with other providers
     // and to support runtime installation in environments where packages aren't pre-installed
     const { DefaultAzureCredential } = await import(await BunProc.install("@azure/identity"))
     const credential = new DefaultAzureCredential()
-    const scope = "https://cognitiveservices.azure.com/.default"
 
     let cachedToken: string | undefined
     let tokenExpiry: number = 0
@@ -254,7 +257,7 @@ export namespace Provider {
       } else if (resourceName) {
         // Try to use DefaultAzureCredential for token-based authentication when we have resourceName but no API key
         try {
-          const getToken = await createAzureTokenProvider()
+          const getToken = await createAzureTokenProvider(AZURE_OPENAI_SCOPE)
 
           // Use headers with a function to get fresh tokens
           // getToken() is efficiently cached and only refreshes when needed (within 5 min of expiry)
@@ -316,7 +319,7 @@ export namespace Provider {
       } else if (resourceName) {
         // Try to use DefaultAzureCredential for token-based authentication when we have resourceName but no API key
         try {
-          const getToken = await createAzureTokenProvider()
+          const getToken = await createAzureTokenProvider(AZURE_OPENAI_SCOPE)
 
           // Use headers with a function to get fresh tokens
           // getToken() is efficiently cached and only refreshes when needed (within 5 min of expiry)
