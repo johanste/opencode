@@ -134,7 +134,7 @@ export namespace Provider {
   /**
    * Creates a default Azure model loader that doesn't require any credentials
    */
-  function createDefaultAzureLoader() {
+  function createDefaultAzureLoader(baseURL?: string) {
     return {
       autoload: false,
       async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
@@ -144,7 +144,7 @@ export namespace Provider {
           return sdk.responses(modelID)
         }
       },
-      options: {},
+      options: baseURL ? { baseURL } : {},
     }
   }
 
@@ -252,6 +252,7 @@ export namespace Provider {
           const getToken = await createAzureTokenProvider()
 
           // Use headers with a function to get fresh tokens
+          // getToken() is efficiently cached and only refreshes when needed (within 5 min of expiry)
           providerOptions.apiKey = AZURE_DUMMY_API_KEY
           providerOptions.headers = async () => {
             const token = await getToken()
@@ -319,6 +320,7 @@ export namespace Provider {
           const getToken = await createAzureTokenProvider()
 
           // Use headers with a function to get fresh tokens
+          // getToken() is efficiently cached and only refreshes when needed (within 5 min of expiry)
           providerOptions.apiKey = AZURE_DUMMY_API_KEY
           providerOptions.headers = async () => {
             const token = await getToken()
@@ -332,15 +334,9 @@ export namespace Provider {
           // Log the error to help with troubleshooting
           log.error("Failed to initialize Azure DefaultAzureCredential for Cognitive Services", { error })
           // Return loader with baseURL set for informational purposes
-          const defaultLoader = createDefaultAzureLoader()
-          return {
-            autoload: defaultLoader.autoload,
-            getModel: defaultLoader.getModel,
-            options: {
-              ...defaultLoader.options,
-              baseURL: resourceName ? `https://${resourceName}.cognitiveservices.azure.com/openai` : undefined,
-            },
-          }
+          return createDefaultAzureLoader(
+            resourceName ? `https://${resourceName}.cognitiveservices.azure.com/openai` : undefined,
+          )
         }
       } else {
         // No credentials available
