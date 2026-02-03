@@ -173,8 +173,11 @@ export namespace Provider {
       // If we have an API key, use it
       if (apiKey) {
         providerOptions.apiKey = apiKey
-      } else {
-        // Try to use DefaultAzureCredential for token-based authentication
+        if (resourceName) {
+          providerOptions.baseURL = `https://${resourceName}.openai.azure.com`
+        }
+      } else if (resourceName) {
+        // Try to use DefaultAzureCredential for token-based authentication when we have resourceName but no API key
         try {
           const { DefaultAzureCredential } = await import(await BunProc.install("@azure/identity"))
           const credential = new DefaultAzureCredential()
@@ -196,8 +199,8 @@ export namespace Provider {
             return cachedToken
           }
 
-          // Get initial token
-          const initialToken = await getToken()
+          // Get initial token to verify credentials work
+          await getToken()
 
           // Use headers with a function to get fresh tokens
           providerOptions.apiKey = "dummy" // Required by SDK but unused when using bearer token
@@ -207,6 +210,7 @@ export namespace Provider {
               Authorization: `Bearer ${token}`,
             }
           }
+          providerOptions.baseURL = `https://${resourceName}.openai.azure.com`
         } catch (error) {
           // If DefaultAzureCredential fails, we'll autoload as false
           return {
@@ -221,11 +225,19 @@ export namespace Provider {
             options: {},
           }
         }
-      }
-
-      // Add baseURL if resourceName is provided
-      if (resourceName) {
-        providerOptions.baseURL = `https://${resourceName}.openai.azure.com`
+      } else {
+        // No credentials available
+        return {
+          autoload: false,
+          async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
+            if (options?.["useCompletionUrls"]) {
+              return sdk.chat(modelID)
+            } else {
+              return sdk.responses(modelID)
+            }
+          },
+          options: {},
+        }
       }
 
       // Determine if we should autoload based on available credentials
@@ -268,8 +280,11 @@ export namespace Provider {
       // If we have an API key, use it
       if (apiKey) {
         providerOptions.apiKey = apiKey
-      } else {
-        // Try to use DefaultAzureCredential for token-based authentication
+        if (resourceName) {
+          providerOptions.baseURL = `https://${resourceName}.cognitiveservices.azure.com/openai`
+        }
+      } else if (resourceName) {
+        // Try to use DefaultAzureCredential for token-based authentication when we have resourceName but no API key
         try {
           const { DefaultAzureCredential } = await import(await BunProc.install("@azure/identity"))
           const credential = new DefaultAzureCredential()
@@ -291,8 +306,8 @@ export namespace Provider {
             return cachedToken
           }
 
-          // Get initial token
-          const initialToken = await getToken()
+          // Get initial token to verify credentials work
+          await getToken()
 
           // Use headers with a function to get fresh tokens
           providerOptions.apiKey = "dummy" // Required by SDK but unused when using bearer token
@@ -302,6 +317,7 @@ export namespace Provider {
               Authorization: `Bearer ${token}`,
             }
           }
+          providerOptions.baseURL = `https://${resourceName}.cognitiveservices.azure.com/openai`
         } catch (error) {
           // If DefaultAzureCredential fails, we'll autoload as false
           return {
@@ -318,11 +334,19 @@ export namespace Provider {
             },
           }
         }
-      }
-
-      // Set baseURL for Cognitive Services
-      if (resourceName) {
-        providerOptions.baseURL = `https://${resourceName}.cognitiveservices.azure.com/openai`
+      } else {
+        // No credentials available
+        return {
+          autoload: false,
+          async getModel(sdk: any, modelID: string, options?: Record<string, any>) {
+            if (options?.["useCompletionUrls"]) {
+              return sdk.chat(modelID)
+            } else {
+              return sdk.responses(modelID)
+            }
+          },
+          options: {},
+        }
       }
 
       // Determine if we should autoload based on available credentials
